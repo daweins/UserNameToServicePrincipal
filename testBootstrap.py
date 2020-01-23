@@ -26,7 +26,7 @@ if (currentDomain is None or userName is None or userPassword is None):
     print("Missing environment variables containing TENANTNAME, USERNAME, or USERPWD. Quitting with code 1 (error)")
     quit(1)
 else:   
-    print ("Environment variables with user paramters found")
+    print ("Environment variables with user parameters found")
     
     # TODO - get this dynamically - not sure if it's static across all tenants
     roleID = "794bb258-3e31-42ff-9ee4-731a72f62851"
@@ -40,9 +40,8 @@ else:
     role_url    = graphURI + "/" + currentDomain + "/directoryRoles/" + roleID + "/$links/members?api-version=1.6"
 
 
-  
 
-    # Get our access token to the Graph endpoint. Use a known clientId to bootstrap our way in 
+    # Get our access token to the Graph endpoint. Use the known clientId to bootstrap our way in 
     try:
         userEmail = userName + '@' + currentDomain
         authContext = adal.AuthenticationContext(authority)
@@ -73,7 +72,7 @@ else:
 
         appResponse = requests.post(app_url, headers=headers,data=json.dumps(appCreateContent))
         appResponseJSON = json.loads(appResponse.content)
-        if "appID" not in appResponseJSON:
+        if "appId" not in appResponseJSON:
             print ("Failed to create the application registration. Failing with 1 (error)")
             quit(1)
         else:
@@ -98,10 +97,10 @@ else:
 
         print ("Newly created spid: " + spID)
     except Exception as e:
-            print("Error creating the service principal. Failing with 1(error)")
+            print("Error creating the service principal. Failing with 1 (error)")
             print e
             quit(1)
-    # This may or may not be necessary - tune as needed.
+    # TODO - This may or may not be necessary - tune as needed.
     print ("Sleeping for AAD propogation")
     time.sleep(15)
 
@@ -110,5 +109,8 @@ else:
     }
 
     roleCreateResponse = requests.post(role_url, headers=headers, data=json.dumps(roleAddContent))
-
-    print ("Success!")
+    if not roleCreateResponse.ok:
+        print "Failed to assign role. Failing with 1 (error)"
+        quit(1)
+    else:
+        print ("Success!")
