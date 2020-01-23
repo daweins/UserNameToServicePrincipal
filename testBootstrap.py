@@ -28,8 +28,6 @@ if (currentDomain is None or userName is None or userPassword is None):
 else:   
     print ("Environment variables with user parameters found")
     
-    # TODO - get this dynamically - not sure if it's static across all tenants
-    roleID = "794bb258-3e31-42ff-9ee4-731a72f62851"
 
    
     # Create some useful strings for later
@@ -37,7 +35,6 @@ else:
     authority   = authorityBase + "/" + currentDomain
     app_url     = graphURI + "/" + currentDomain + "/applications?api-version=1.6"
     sp_url      = graphURI + "/" + currentDomain + "/servicePrincipals?api-version=1.6"
-    role_url    = graphURI + "/" + currentDomain + "/directoryRoles/" + roleID + "/$links/members?api-version=1.6"
 
 
 
@@ -77,7 +74,7 @@ else:
             quit(1)
         else:
             appID = appResponseJSON["appId"]
-            print ("Created application regitration with App ID:" + appID)
+            print ("Created application registration with App ID:" + appID)
     except Exception as e:
             print("Error creating application registration. Failing with 1 (error)")
             print e
@@ -104,10 +101,31 @@ else:
     print ("Sleeping for AAD propogation")
     time.sleep(15)
 
+
+    # Get the Company (Global) Admin role ID rather than relying on hardcoding
+    roleId = "794bb258-3e31-42ff-9ee4-731a72f62851" # Default - hard coded
+    try:
+        roleListURL = graphURI + "/" + currentDomain + "/directoryRoles?api-version=1.6"
+        roleListResponse = requests.get(roleListURL,headers=headers)
+        roleListJSON = json.loads(roleListResponse.content)
+        foundRole = False
+        for curRole in roleListJSON["value"]:
+            if curRole["displayName"] == "Company Administrator":
+                print("Found Company (Global) Admin role: " + curRole["objectId"])
+                roleId = curRole["objectId"]
+                foundRole = True
+        if not foundRole:
+                print("Couldn't find the Company Admin Role - continuing with the hardcoded value of " + roleId)
+    except  Exception as e:
+        print("Error getting the Company (Global) Admin role - continuing with the hardcoded value of "+ roleId)
+        print(e)
+
+
     roleAddContent = {
         "url": spURL
     }
 
+    role_url    = graphURI + "/" + currentDomain + "/directoryRoles/" + roleId + "/$links/members?api-version=1.6"  # TODO- move to a template and populate down here
     roleCreateResponse = requests.post(role_url, headers=headers, data=json.dumps(roleAddContent))
     if not roleCreateResponse.ok:
         print "Failed to assign role. Failing with 1 (error)"
