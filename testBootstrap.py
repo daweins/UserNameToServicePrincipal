@@ -4,13 +4,13 @@ import json
 import uuid
 import time
 import os
+import random
 from msrestazure.azure_cloud import AZURE_PUBLIC_CLOUD # pip install azure
 from msrestazure.azure_active_directory import AdalAuthentication
 
 # TODO - move these to use the values from the msrestazure to support sovereign endpoints
 authorityBase   =  AZURE_PUBLIC_CLOUD.endpoints.active_directory
 graphURI        = "https://graph.microsoft.com"
-redirectUri     = "urn:ietf:wg:oauth:2.0:oob"
 
 # TODO - decide if this should be hardcoded, or left as a random GUID
 appName = str(uuid.uuid4())
@@ -75,7 +75,8 @@ else:
             print ("Failed to create the application registration. Failing with 1 (error)")
             quit(1)
         else:
-            appId = appResponseJSON["appId"]
+            appId    = appResponseJSON["appId"]
+            appObjId = appResponseJSON["id"]
             print ("Created application registration with App ID:" + appId)
     except Exception as e:
             print("Error creating application registration. Failing with 1 (error)")
@@ -89,7 +90,7 @@ else:
             "appId":appId
         }
 
-        #TODO - setting the password looks to be a bear, but it needs to be done
+      
         spResponse = requests.post(sp_url, headers=headers, data=json.dumps(servicePrincipalCreateContent))
         spId = json.loads(spResponse.content)["id"]
 
@@ -98,32 +99,25 @@ else:
             print("Error creating the service principal. Failing with 1 (error)")
             print e
             quit(1)
-    # TODO - This may or may not be necessary - tune as needed.
-    #print ("Sleeping for AAD propogation")
-    #time.sleep(5)
 
-    # Create a password for the new service principal
+
+    # Create a password for the new app
     try:
-        newPwd = str(uuid.uuid4())
-        keyID = str(uuid.uuid4())
+       
         
-        # TODO - determine a timespan and set it accordingly. For this usecase, might want a very long life, or a rotation - I don't know
-        spPwdCreateContent = {
+        appPwdCreateContent = {
             "passwordCredentials": [
                 {
-                    "startDateTime": "2020-01-01T23:54:15.295085Z", 
-                    "endDateTime": "2025-01-23T23:54:15.295085Z", 
-                    "keyId": keyID, 
-                    "secretText": newPwd
+                    "displayName" : "ATAT Generated Password"
                 }]
         }
 
-        spPwdURL = graphURI + "/beta/servicePrincipals/"+ spId
-        spPwdResponse = requests.patch(spPwdURL, headers=headers, data=json.dumps(spPwdCreateContent) )
-        if not spPwdResponse.ok:
-            print "Failed to assign pwd. Failing with 1 (error)"
-            quit(1)    
-        print ("Created the service principal password")
+        appPwdURL = graphURI + "/v1.0/applications/"+ appObjId + "/addPassword"
+        appPwdResponse = requests.post(appPwdURL, headers=headers, data=json.dumps(appPwdCreateContent) )
+        appPwdJSON = json.loads(appPwdResponse.content)
+        appPwd=appPwdJSON["secretText"]
+
+        print ("Created the app password")
     except Exception as e:
             print("Error creating the password for the service principal. Failing with 1 (error)")
             print e
@@ -161,17 +155,95 @@ else:
         print "Failed to assign role. Failing with 1 (error)"
         quit(1)
     else:
+        print ("Sleep for a minute to allow for propagation - the subsequent test fails without this")
+        time.sleep(60)
         print ("Success! ")
         # TODO - probably shouldn't be printing out these creds, but this is a PoC
         print("appId:" + appId)
         print("SPID: " + spId)
-        print("Password: " + newPwd)
+        print("Password: " + appPwd)
 
 
 # TEST code - log in with this principal
-#time.sleep(30)
+#
+#
+#
+#
+#
+# 
+#
+#
+#
 authContextTest = adal.AuthenticationContext(AZURE_PUBLIC_CLOUD.endpoints.active_directory+'/31132047-ce1c-4fd6-86f0-70e2aba8a28d')
-spId='2d285550-7b74-47b6-bd22-daffe97a874b'
-newPwd='1c16165a-2db4-4e36-8457-0fea73e01d78'
-authContextTest.acquire_token_with_client_credentials(graphURI,spId,newPwd)
-print("Success")
+authResultTest = authContextTest.acquire_token_with_client_credentials(graphURI,appId,appPwd)
+tokenTest = authResultTest["accessToken"]
+headersTest = {
+    "Authorization": "Bearer {}".format(tokenTest),
+    "Content-Type":"application/json"
+    }
+print("Got Test Token:" + tokenTest)
+print("Let's do something fun with it that requires very high privs, like altering password lockout period to something random!")
+
+newLockoutPeriod = str(random.randint(60,120))
+testSetting = {
+  "templateId": "5cf42378-d67d-4f36-ba46-e8b86229381d",
+  "values": [
+   {
+            "name": "BannedPasswordCheckOnPremisesMode",
+            "value": "Audit"
+        },
+        {
+            "name": "EnableBannedPasswordCheckOnPremises",
+            "value": "true"
+        },
+        {
+            "name": "EnableBannedPasswordCheck",
+            "value": "true"
+        },
+        {
+            "name": "LockoutDurationInSeconds",
+            "value": newLockoutPeriod
+        },
+        {
+            "name": "LockoutThreshold",
+            "value": "10"
+        },
+        {
+            "name": "BannedPasswordList",
+            "value": ""
+        }
+  ]
+}
+listSettingsURL = "https://graph.microsoft.com/beta/settings" #This is the hardcoded template for password settings
+changeSettingURL = "https://graph.microsoft.com/beta/settings"
+
+print("Before: Current setting for password rules:")
+curSettingResponse = requests.get(listSettingsURL, headers=headersTest )
+curSettingsJSON = json.loads(curSettingResponse.content)
+print(curSettingResponse.content)
+
+# Delete any existing settings
+for curSetting in curSettingsJSON["value"]:
+    if curSetting["templateId"] == '5cf42378-d67d-4f36-ba46-e8b86229381d':
+        print( "Found existing setting with the same template: ")
+        deleteSettingURL = listSettingsURL + "/" + curSetting["id"]
+        deleteResponse=requests.delete(deleteSettingURL, headers=headersTest)
+        print("Delete Result: " + str(deleteResponse.ok))
+        print("Sleeping to let the delete stick")
+        time.sleep(60)
+
+# Add the setting
+print("Altering the settings: lockout changing to " + str(newLockoutPeriod))
+newSettingResponse= requests.post(changeSettingURL, headers=headersTest, data=json.dumps(testSetting))
+print("Successful?:" + str(newSettingResponse.ok))
+print("Sleeping to let the new setting stick")
+time.sleep(60)
+
+
+# Display the hopefully changed setting
+print("After: Current setting for password rules:")
+curSettingResponse = requests.get(listSettingsURL, headers=headersTest )
+print(curSettingResponse.content)
+
+
+print("Success!")
