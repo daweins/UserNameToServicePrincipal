@@ -4,10 +4,12 @@ import json
 import uuid
 import time
 import os
+from msrestazure.azure_cloud import AZURE_PUBLIC_CLOUD # pip install azure
+from msrestazure.azure_active_directory import AdalAuthentication
 
-# TODO - move these to environment variables to support sovereign endpoints
-authorityBase   = "https://login.microsoftonline.com"
-graphURI        = "https://graph.windows.net"
+# TODO - move these to use the values from the msrestazure to support sovereign endpoints
+authorityBase   =  AZURE_PUBLIC_CLOUD.endpoints.active_directory
+graphURI        = "https://graph.microsoft.com"
 redirectUri     = "urn:ietf:wg:oauth:2.0:oob"
 
 # TODO - decide if this should be hardcoded, or left as a random GUID
@@ -33,8 +35,8 @@ else:
     # Create some useful strings for later
     clientId    = "1b730954-1685-4b74-9bfd-dac224a7b894"      # PowerShell Client Id - TODO - see if there is a better way to do this, but it"s a good cheat to get on the first rung of the ladder for now
     authority   = authorityBase + "/" + currentDomain
-    app_url     = graphURI + "/" + currentDomain + "/applications?api-version=1.6"
-    sp_url      = graphURI + "/" + currentDomain + "/servicePrincipals?api-version=1.6"
+    app_url     = graphURI + "/" + "/v1.0/applications"
+    sp_url      = graphURI + "/" + "/beta/servicePrincipals"
 
 
 
@@ -73,8 +75,8 @@ else:
             print ("Failed to create the application registration. Failing with 1 (error)")
             quit(1)
         else:
-            appID = appResponseJSON["appId"]
-            print ("Created application registration with App ID:" + appID)
+            appId = appResponseJSON["appId"]
+            print ("Created application registration with App ID:" + appId)
     except Exception as e:
             print("Error creating application registration. Failing with 1 (error)")
             print e
@@ -84,35 +86,61 @@ else:
     # Create the service principal associated with the app registration we just created
     try:
         servicePrincipalCreateContent = {
-            "appID":appID
+            "appId":appId
         }
 
         #TODO - setting the password looks to be a bear, but it needs to be done
         spResponse = requests.post(sp_url, headers=headers, data=json.dumps(servicePrincipalCreateContent))
-        spID = json.loads(spResponse.content)["objectId"]
-        spURL = graphURI + "/" + currentDomain + "/directoryObjects/" + spID + "/Microsoft.DirectoryServices.ServicePrincipal"
+        spId = json.loads(spResponse.content)["id"]
 
-        print ("Newly created spid: " + spID)
+        print ("Newly created spId: " + spId)
     except Exception as e:
             print("Error creating the service principal. Failing with 1 (error)")
             print e
             quit(1)
     # TODO - This may or may not be necessary - tune as needed.
-    print ("Sleeping for AAD propogation")
-    time.sleep(15)
+    #print ("Sleeping for AAD propogation")
+    #time.sleep(5)
+
+    # Create a password for the new service principal
+    try:
+        newPwd = str(uuid.uuid4())
+        keyID = str(uuid.uuid4())
+        
+        # TODO - determine a timespan and set it accordingly. For this usecase, might want a very long life, or a rotation - I don't know
+        spPwdCreateContent = {
+            "passwordCredentials": [
+                {
+                    "startDateTime": "2020-01-01T23:54:15.295085Z", 
+                    "endDateTime": "2025-01-23T23:54:15.295085Z", 
+                    "keyId": keyID, 
+                    "secretText": newPwd
+                }]
+        }
+
+        spPwdURL = graphURI + "/beta/servicePrincipals/"+ spId
+        spPwdResponse = requests.patch(spPwdURL, headers=headers, data=json.dumps(spPwdCreateContent) )
+        if not spPwdResponse.ok:
+            print "Failed to assign pwd. Failing with 1 (error)"
+            quit(1)    
+        print ("Created the service principal password")
+    except Exception as e:
+            print("Error creating the password for the service principal. Failing with 1 (error)")
+            print e
+            quit(1)
 
 
     # Get the Company (Global) Admin role ID rather than relying on hardcoding
     roleId = "794bb258-3e31-42ff-9ee4-731a72f62851" # Default - hard coded
     try:
-        roleListURL = graphURI + "/" + currentDomain + "/directoryRoles?api-version=1.6"
+        roleListURL = graphURI + "/beta/roleManagement/directory/roleDefinitions"
         roleListResponse = requests.get(roleListURL,headers=headers)
         roleListJSON = json.loads(roleListResponse.content)
         foundRole = False
         for curRole in roleListJSON["value"]:
             if curRole["displayName"] == "Company Administrator":
-                print("Found Company (Global) Admin role: " + curRole["objectId"])
-                roleId = curRole["objectId"]
+                print("Found Company (Global) Admin role: " + curRole["id"])
+                roleId = curRole["id"]
                 foundRole = True
         if not foundRole:
                 print("Couldn't find the Company Admin Role - continuing with the hardcoded value of " + roleId)
@@ -122,13 +150,28 @@ else:
 
 
     roleAddContent = {
-        "url": spURL
+        "principalId": spId,
+        "roleDefinitionId" : roleId,
+        "resourceScope":"/"
     }
 
-    role_url    = graphURI + "/" + currentDomain + "/directoryRoles/" + roleId + "/$links/members?api-version=1.6"  # TODO- move to a template and populate down here
+    role_url    = graphURI + "/beta/roleManagement/directory/roleAssignments" 
     roleCreateResponse = requests.post(role_url, headers=headers, data=json.dumps(roleAddContent))
     if not roleCreateResponse.ok:
         print "Failed to assign role. Failing with 1 (error)"
         quit(1)
     else:
-        print ("Success!")
+        print ("Success! ")
+        # TODO - probably shouldn't be printing out these creds, but this is a PoC
+        print("appId:" + appId)
+        print("SPID: " + spId)
+        print("Password: " + newPwd)
+
+
+# TEST code - log in with this principal
+#time.sleep(30)
+authContextTest = adal.AuthenticationContext(AZURE_PUBLIC_CLOUD.endpoints.active_directory+'/31132047-ce1c-4fd6-86f0-70e2aba8a28d')
+spId='2d285550-7b74-47b6-bd22-daffe97a874b'
+newPwd='1c16165a-2db4-4e36-8457-0fea73e01d78'
+authContextTest.acquire_token_with_client_credentials(graphURI,spId,newPwd)
+print("Success")
