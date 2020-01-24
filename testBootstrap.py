@@ -83,6 +83,9 @@ else:
             print e
             quit(1)
         
+    # Wait to let AAD propagate
+    time.sleep(10)
+
 
     # Create the service principal associated with the app registration we just created
     try:
@@ -182,68 +185,81 @@ headersTest = {
     "Content-Type":"application/json"
     }
 print("Got Test Token:" + tokenTest)
-print("Let's do something fun with it that requires very high privs, like altering password lockout period to something random!")
-
-newLockoutPeriod = str(random.randint(60,120))
-testSetting = {
-  "templateId": "5cf42378-d67d-4f36-ba46-e8b86229381d",
-  "values": [
-   {
-            "name": "BannedPasswordCheckOnPremisesMode",
-            "value": "Audit"
-        },
-        {
-            "name": "EnableBannedPasswordCheckOnPremises",
-            "value": "true"
-        },
-        {
-            "name": "EnableBannedPasswordCheck",
-            "value": "true"
-        },
-        {
-            "name": "LockoutDurationInSeconds",
-            "value": newLockoutPeriod
-        },
-        {
-            "name": "LockoutThreshold",
-            "value": "10"
-        },
-        {
-            "name": "BannedPasswordList",
-            "value": ""
-        }
-  ]
-}
-listSettingsURL = "https://graph.microsoft.com/beta/settings" #This is the hardcoded template for password settings
-changeSettingURL = "https://graph.microsoft.com/beta/settings"
-
-print("Before: Current setting for password rules:")
-curSettingResponse = requests.get(listSettingsURL, headers=headersTest )
-curSettingsJSON = json.loads(curSettingResponse.content)
-print(curSettingResponse.content)
-
-# Delete any existing settings
-for curSetting in curSettingsJSON["value"]:
-    if curSetting["templateId"] == '5cf42378-d67d-4f36-ba46-e8b86229381d':
-        print( "Found existing setting with the same template: ")
-        deleteSettingURL = listSettingsURL + "/" + curSetting["id"]
-        deleteResponse=requests.delete(deleteSettingURL, headers=headersTest)
-        print("Delete Result: " + str(deleteResponse.ok))
-        print("Sleeping to let the delete stick")
-        time.sleep(60)
-
-# Add the setting
-print("Altering the settings: lockout changing to " + str(newLockoutPeriod))
-newSettingResponse= requests.post(changeSettingURL, headers=headersTest, data=json.dumps(testSetting))
-print("Successful?:" + str(newSettingResponse.ok))
-print("Sleeping to let the new setting stick")
-time.sleep(60)
 
 
-# Display the hopefully changed setting
-print("After: Current setting for password rules:")
-curSettingResponse = requests.get(listSettingsURL, headers=headersTest )
-print(curSettingResponse.content)
+doAADSettingChangeTest = False
+if doAADSettingChangeTest:
+    print("Let's do something fun with it that requires very high privs, like altering password lockout period to something random!")
+
+    newLockoutPeriod = str(random.randint(60,120))
+    testSetting = {
+    "templateId": "5cf42378-d67d-4f36-ba46-e8b86229381d",
+    "values": [
+    {
+                "name": "BannedPasswordCheckOnPremisesMode",
+                "value": "Audit"
+            },
+            {
+                "name": "EnableBannedPasswordCheckOnPremises",
+                "value": "true"
+            },
+            {
+                "name": "EnableBannedPasswordCheck",
+                "value": "true"
+            },
+            {
+                "name": "LockoutDurationInSeconds",
+                "value": newLockoutPeriod
+            },
+            {
+                "name": "LockoutThreshold",
+                "value": "10"
+            },
+            {
+                "name": "BannedPasswordList",
+                "value": ""
+            }
+    ]
+    }
+    listSettingsURL = "https://graph.microsoft.com/beta/settings" #This is the hardcoded template for password settings
+    changeSettingURL = "https://graph.microsoft.com/beta/settings"
+
+    print("Before: Current setting for password rules:")
+    curSettingResponse = requests.get(listSettingsURL, headers=headersTest )
+    curSettingsJSON = json.loads(curSettingResponse.content)
+    print(curSettingResponse.content)
+
+    # Delete any existing settings
+    for curSetting in curSettingsJSON["value"]:
+        if curSetting["templateId"] == '5cf42378-d67d-4f36-ba46-e8b86229381d':
+            print( "Found existing setting with the same template: ")
+            deleteSettingURL = listSettingsURL + "/" + curSetting["id"]
+            deleteResponse=requests.delete(deleteSettingURL, headers=headersTest)
+            print("Delete Result: " + str(deleteResponse.ok))
+            print("Sleeping to let the delete stick")
+            time.sleep(60)
+
+    # Add the setting
+    print("Altering the settings: lockout changing to " + str(newLockoutPeriod))
+    newSettingResponse= requests.post(changeSettingURL, headers=headersTest, data=json.dumps(testSetting))
+    print("Successful?:" + str(newSettingResponse.ok))
+    print("Sleeping to let the new setting stick")
+    time.sleep(60)
 
 
-print("Success!")
+    # Display the hopefully changed setting
+    print("After: Current setting for password rules:")
+    curSettingResponse = requests.get(listSettingsURL, headers=headersTest )
+    print(curSettingResponse.content)
+
+
+# Test creating a management group and granting the initial user perms to it
+doManagementGroupTest = True
+if doManagementGroupTest:
+    # Elevate Global Admin Users' privileges
+
+    elevateURL = 'https://management.azure.com/providers/Microsoft.Authorization/elevateAccess?api-version=2016-07-01'
+    elevateResponse = requests.post(elevateURL, headers=headers)
+    print("Elevation Result: " + elevateResponse.content)
+
+print("All Done!")
