@@ -8,9 +8,12 @@ import random
 from msrestazure.azure_cloud import AZURE_PUBLIC_CLOUD # pip install azure
 from msrestazure.azure_active_directory import AdalAuthentication
 
-# TODO - move these to use the values from the msrestazure to support sovereign endpoints
-authorityBase   =  AZURE_PUBLIC_CLOUD.endpoints.active_directory
-graphURI        = "https://graph.microsoft.com"
+
+curCloud = AZURE_PUBLIC_CLOUD
+authorityBase   =  curCloud.endpoints.active_directory
+managementURI   = curCloud.endpoints.management
+
+graphURI        = "https://graph.microsoft.com/" # Don't see any endpoint in the cloud object - will work w/ PG to remove need for this hardcoding of Graph 2.0 endpoint. See https://docs.microsoft.com/en-us/azure/azure-government/documentation-government-developer-guide for Gov endpoint
 
 # TODO - decide if this should be hardcoded, or left as a random GUID
 appName = str(uuid.uuid4())
@@ -40,8 +43,8 @@ else:
     # Create some useful strings for later
     clientId    = "1b730954-1685-4b74-9bfd-dac224a7b894"      # PowerShell Client Id - TODO - see if there is a better way to do this, but it"s a good cheat to get on the first rung of the ladder for now
     authority   = authorityBase + "/" + currentDomain
-    app_url     = graphURI + "/" + "/v1.0/applications"
-    sp_url      = graphURI + "/" + "/beta/servicePrincipals"
+    app_url     = graphURI + "v1.0/applications"
+    sp_url      = graphURI + "beta/servicePrincipals"
 
 
 
@@ -89,6 +92,7 @@ else:
             appResponseJSON = json.loads(appResponse.content)
             if "appId" not in appResponseJSON:
                 print ("Failed to create the application registration. Retrying with backoff")
+                print appResponse.content
                 print ("Sleeping with backoff:" + str(backoff))
                 time.sleep(backoff)
                 backoff *= backoffRate
@@ -254,7 +258,7 @@ while not gotSPAuth:
         print("Got Test Token:" + tokenTest)
         gotSPAuth = True
     except Exception as e:
-        print ("Failure logging in with the new principal. Backing off")
+        print ("Failure logging in with the new principal. Don't be surprised if this takes 15-60 seconds.  Backing off")
         print e
         
         print ("Sleeping with backoff:" + str(backoff))
@@ -307,8 +311,8 @@ if doAADSettingChangeTest:
                     }
             ]
             }
-            listSettingsURL = "https://graph.microsoft.com/beta/settings" #This is the hardcoded template for password settings
-            changeSettingURL = "https://graph.microsoft.com/beta/settings"
+            listSettingsURL  = graphURI  + "/beta/settings" #This is the hardcoded template for password settings
+            changeSettingURL = graphURI  + "/beta/settings"
 
             print("Before: Current setting for password rules:")
             curSettingResponse = requests.get(listSettingsURL, headers=headersTest )
@@ -425,7 +429,7 @@ if doAADSettingChangeTest:
                 quit(1)
 
 # Test creating a management group and granting the initial user perms to it
-doManagementGroupTest = False
+doManagementGroupTest = True
 if doManagementGroupTest:
     # Elevate Global Admin Users' privileges
     print ("Let's test using the new creds to create management groups")
@@ -437,7 +441,7 @@ if doManagementGroupTest:
     # TODO - add logic to kill off any existing management groups - this is supposed to be a fresh test
     rootGroupName = "daweinsroot"
 
-    createRootURL = "https://management.azure.com/providers/Microsoft.Management/managementGroups/" + rootGroupName + "?api-version=2018-03-01-preview" #TODO - I need to learn python's format command 
+    createRootURL = managementURI + "/providers/Microsoft.Management/managementGroups/" + rootGroupName + "?api-version=2018-03-01-preview" #TODO - I need to learn python's format command 
     createRootMG =     {
     "id": "/providers/Microsoft.Management/managementGroups/ChildGroup",
     "type": "/providers/Microsoft.Management/managementGroups",
