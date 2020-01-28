@@ -7,7 +7,7 @@ import os
 import random
 from msrestazure.azure_cloud import AZURE_PUBLIC_CLOUD # pip install azure
 from msrestazure.azure_active_directory import AdalAuthentication
-from msal import PublicClientApplication
+#from msal import PublicClientApplication # MSAL doesn't support the Powershell ClientId hack, so don't bother
 
 # create a struct to hold the user & the sp's tokens for graph, management, etc. TODO - this should be decomposed out to a class
 privUser = 'Initial Global Admin User'
@@ -19,46 +19,53 @@ credList[privSP] = {}
 
 
 
+
+
 # TODO - factor out the backoff code - I hate copypasta code
 
 curCloud = AZURE_PUBLIC_CLOUD
 authorityBase   =  curCloud.endpoints.active_directory
 managementURI   = curCloud.endpoints.resource_manager
-graphURI        = "https://graph.microsoft.com/" # Don't see any endpoint in the cloud object - will work w/ PG to remove need for this hardcoding of Graph 2.0 endpoint. See https://docs.microsoft.com/en-us/azure/azure-government/documentation-government-developer-guide for Gov endpoint
+graphURI        = "https://graph.microsoft.com/" # Don't see any endpoint in the cloud object - will work w/ PG to remove need for this hardcoding of Graph 2.0 endpoint. See https://docs.microsoft.com/en-us/azure/azure-government/documentation-government-developer-guIde for Gov endpoint
+
 
 uriToAuthAgainstList = [managementURI, graphURI]
+scopeList = ["user.read"]
 
 
 
-# TODO - decide if this should be hardcoded, or left as a random GUID
+# TODO - decIde if this should be hardcoded, or left as a random GUId
 appName = str(uuid.uuid4())
 
 print("Starting. Note - we expect transient errors & retries - we are not waiting arbitrary times for AAD propagation")
 
 #Tenant Information
-tenantID      = os.environ.get("TENANTID") # ex: daweinsatat.onmicrosoft.com - note, because we append this to the userName, don't use the Tenant ID
+TENANTID      = os.environ.get("TENANTID") # ex: daweinsatat.onmicrosoft.com - note, because we append this to the userName, don't use the Tenant Id
 userName      = os.environ.get("USERNAME")   # ex: bootstrapadmin if the email address was bootstrapadmin@daweinsatat.onmicrosoft.com
 userPassword  = os.environ.get("USERPWD")    # ex: ImN0tPuttingAnExampleForThis! 
 
 # Fail immediately if these aren't populated
-if (tenantID is None or userName is None or userPassword is None):
+if (TENANTID is None or userName is None or userPassword is None):
     print("Missing environment variables containing TENANTID, USERNAME, or USERPWD. Quitting with code 1 (error)")
     quit(1)
 else:   
     print ("Environment variables with user parameters found")
     
     # keep track of errors to allow exponential backoff
-    # TODO - decompose this out to something more reusable. It needs logging and periodic reseting to avoid near-infinite lockout
+    # TODO - decompose this out to something more reusable. It needs logging and periodic reseting to avoId near-infinite lockout
     backoff=1
     backoffRate = 2
     maxBackoff = 300
 
 
     # Create some useful strings for later
-    clientId    = "1b730954-1685-4b74-9bfd-dac224a7b894"      # PowerShell Client Id - TODO - see if there is a better way to do this, but it"s a good cheat to get on the first rung of the ladder for now
-    authority   = authorityBase + "/" + tenantID
+    #clientId    = "1b730954-1685-4b74-9bfd-dac224a7b894"      # Hardcoded Client Id for ADAL of unknown provenance - TODO - see if there is a better way to do this, but it"s a good cheat to get on the first rung of the ladder for now
+    clientId    = "1950a258-227b-4e31-a9cf-717495945fc2"       # PowerShell Client Id for ADAL - TODO - see if there is a better way to do this, but it"s a good cheat to get on the first rung of the ladder for now
+   
+    authority   = authorityBase + "/" + TENANTID
     app_url     = graphURI + "v1.0/applications"
     sp_url      = graphURI + "beta/servicePrincipals"
+    me_url      = graphURI + "v1.0/me/"
 
 
 
@@ -67,11 +74,10 @@ else:
         gotToken = False
         while not gotToken:
             try:
-                
-                authContext = adal.AuthenticationContext(authority)
-                authResult = authContext.acquire_token_with_username_password(curAuthUri, userName, userPassword, clientId) 
+                authContext = adal.AuthenticationContext(authority) 
+                authResult = authContext.acquire_token_with_username_password(curAuthUri, userName, userPassword, clientId)  # Need to use ADAL - hardcoded Powershell ClientId trick doesn't work for MSAL
                 if "accessToken" not in authResult:
-                    print ("Didn't get an auth token for user {0} credentials for {1} Retrying with backoff".format(userName, curAuthUri))
+                    print ("DIdn't get an auth token for user {0} credentials for {1} Retrying with backoff".format(userName, curAuthUri))
                     time.sleep(backoff)
                     backoff *= backoffRate
                     # TODO - probably add some more logging, like the error result returned
@@ -85,7 +91,7 @@ else:
                         }
                     credList[privUser][curAuthUri] = headers
             except Exception as e:
-                print ("Didn't get an auth token for user {0} credentials for {1} Retrying with backoff".format(userName, curAuthUri))
+                print ("DIdn't get an auth token for user {0} credentials for {1} Retrying with backoff".format(userName, curAuthUri))
                 print e
                 print ("Sleeping with backoff:" + str(backoff))
                 time.sleep(backoff)
@@ -95,7 +101,16 @@ else:
                     print("Backed off too much - quitting with error (1)") 
                     quit(1)
 
-    # Create the application registration and get its ID
+    # Get my principal Id, as I'll need it for assignment perms later
+    meResponse = requests.get(me_url,headers=credList[privUser][graphURI])
+    if meResponse.ok:
+        meResponseJSON = json.loads(meResponse.content)
+        privUserPrincipalId = meResponseJSON["id"]
+    else:
+        "Failed to get the priv user's Id"
+
+
+    # Create the application registration and get its Id
     gotAPPReg = False
     while not gotAPPReg:
         try:
@@ -120,7 +135,7 @@ else:
             else:
                 appId    = appResponseJSON["appId"]
                 appObjId = appResponseJSON["id"]
-                print ("Created application registration with App ID:" + appId)
+                print ("Created application registration with App Id:" + appId)
                 gotAPPReg = True
         except Exception as e:
                 print("Error creating application registration. Retrying with backoff")
@@ -198,7 +213,7 @@ else:
 
 
     # TODO - Loop this to iterate over an array of roles to assign 
-    # Get the Company (Global) Admin role ID rather than relying on hardcoding
+    # Get the Company (Global) Admin role Id rather than relying on hardcoding
     # This doesn't need retry logic - use the hardcoded if it fails
     roleId = "794bb258-3e31-42ff-9ee4-731a72f62851" # no hardcoding
     try:
@@ -250,7 +265,7 @@ else:
 
                 # TODO - add a get role for the user as a check before declaring success
                 print("appId:" + appId)
-                print("SPID: " + spId)
+                print("SPId: " + spId)
                 print("Password: " + appPwd)
         except Exception as e:
                 print ("Error assigning the role - retrying with backoff")
@@ -275,7 +290,7 @@ for curAuthUri in uriToAuthAgainstList:
             authContextSP = adal.AuthenticationContext(authority=authority)
             authResultSP = authContextSP.acquire_token_with_client_credentials(curAuthUri,appId,appPwd)
             if "accessToken" not in authResultSP:
-                    print ("Didn't get an auth token with the provided user {0} credentials for {1}}. Retrying with backoff".format(appId,curAuthUri))
+                    print ("DIdn't get an auth token with the provIded user {0} credentials for {1}}. Retrying with backoff".format(appId,curAuthUri))
                     time.sleep(backoff)
                     backoff *= backoffRate
                     # TODO - probably add some more logging, like the error result returned
@@ -506,19 +521,19 @@ if doManagementGroupTest:
   
     # Create the root group (note - can't even list the groups until the parent is in place). This needs to be done before elevating the perms
     # TODO - add logic to kill off any existing management groups - this is supposed to be a fresh test. Need to see if we can even reclean after creating the root MG...
-    rootGroupName = "daweinsroot"
+    tempGroupName = "daweinsroot"
 
     doneCreateRootMG = False
     while not doneCreateRootMG:
         try:
-            createRootURL = managementURI + "providers/Microsoft.Management/managementGroups/" + rootGroupName + "?api-version=2018-03-01-preview" #TODO - I need to learn python's format command 
+            createRootURL = managementURI + "providers/Microsoft.Management/managementGroups/" + tempGroupName + "?api-version=2018-03-01-preview" #TODO - I need to learn python's format command 
             createRootMG =     {
             "id": "/providers/Microsoft.Management/managementGroups/ChildGroup",
             "type": "/providers/Microsoft.Management/managementGroups",
-            "name": rootGroupName,
+            "name": tempGroupName,
             "properties": {
-                "tenantId": tenantID,
-                "displayName": rootGroupName,
+                "TENANTID": TENANTID,
+                "displayName": tempGroupName,
                 "details": {
                 "parent": {
                 
@@ -526,12 +541,13 @@ if doManagementGroupTest:
                 }
             }
             }
+            print "Creating temporary management group in order to provoke creation of the root MG"
             createRootMGResponse = requests.put(createRootURL, headers=credList[privUser][managementURI], data=json.dumps(createRootMG))
             print str(createRootMGResponse.content)
             if createRootMGResponse.ok:
                 doneCreateRootMG = True
             else:
-                print("Error creating root MG")
+                print("Error creating temporary MG")
                 print ("Sleeping with backoff:" + str(backoff))
                 time.sleep(backoff)
                 backoff *= backoffRate
@@ -540,7 +556,7 @@ if doManagementGroupTest:
                     print("Backed off too much - quitting with error (1)") 
                     quit(1)
         except Exception as e:
-            print("Exception creating root MG")
+            print("Exception creating temp MG")
             print e
             print ("Sleeping with backoff:" + str(backoff))
             time.sleep(backoff)
@@ -550,9 +566,42 @@ if doManagementGroupTest:
                 print("Backed off too much - quitting with error (1)") 
                 quit(1)
 
-  
-    
+    # Assign ownership to the root group (parent of the one just created) to the username & sp
+    userPrincipalIdList = [ privUserPrincipalId, spId ]
+    ownerRoleId = '8e3af657-a8ff-443c-a75c-2fe8c4bcb635' #This is stable & published, but we could/should get it dynamically as well
+    for curPrincipalId in userPrincipalIdList:
+        try:
+            rootMGId = TENANTID #The tenant root automatically gets named w/ the tenant ID, which is convenient
+            print "Assigning Owner privs to management group {0} for principal {1}".format(rootMGId, curPrincipalId)
+            roleDefId = "/providers/Microsoft.Management/managementGroups/{0}/providers/Microsoft.Authorization/roleDefinitions/{1}".format(rootMGId,ownerRoleId) 
+            assignmentGUID = str(uuid.uuid4())
+            assignURL = "{0}/providers/Microsoft.Management/managementGroups/{1}/providers/Microsoft.Authorization/roleAssignments/{2}?api-version=2015-07-01".format(managementURI,rootMGId,assignmentGUID)
+            assignPermsContent = {
+                    "properties": {
+                        "roleDefinitionId": roleDefId,
+                        "principalId": curPrincipalId
+                    }
+                }
+            assignPermResponse = requests.put(assignURL, headers=credList[privUser][managementURI],data=json.dumps(assignPermsContent))
+            if assignPermResponse.ok:
+                print "Assigned permissions successfully!"
+            print assignPermResponse.content
 
+        except Exception as e:
+            print "Error assigning permssion"
+            print e
 
-
+    # Delete the created temp MG
+    deleteMGRUL = "{0}/providers/Microsoft.Management/managementGroups/{1}?api-version=2018-03-01-preview".format(managementURI, tempGroupName )
+    try:
+        print "Deleting the temporary Management Group"
+        deleteMTResponse = requests.delete(deleteMGRUL, headers=credList[privUser][managementURI])
+        print deleteMTResponse.content
+        if deleteMTResponse.ok:
+            print "Successfully deleted the temporary management group"
+        else:
+            print "Failed to delete the temp management group"
+    except Exception as e:
+        print "Error deleting temp management group"
+        print e
 print("All Done!")
