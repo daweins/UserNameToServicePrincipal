@@ -544,8 +544,26 @@ if doManagementGroupTest:
             print "Creating temporary management group in order to provoke creation of the root MG"
             createRootMGResponse = requests.put(createRootURL, headers=credList[privUser][managementURI], data=json.dumps(createRootMG))
             print str(createRootMGResponse.content)
+            numTimesToTryGet = 10
             if createRootMGResponse.ok:
-                doneCreateRootMG = True
+                while numTimesToTryGet > 0 and not doneCreateRootMG:
+                   #Check to see if group has created
+                    try:
+                        getMGURL = "https://management.azure.com/providers/Microsoft.Management/managementGroups/{0}?api-version=2018-03-01-preview".format(tempGroupName)
+                        getMGResponse = requests.get(getMGURL, headers=credList[privUser][managementURI])
+                        getMGJSON = json.loads(getMGResponse.content)
+                        if "id" in getMGJSON:
+                            print "The management group is ready - it's id is {0}".format(getMGJSON["id"])
+                            doneCreateRootMG = True
+                        else:
+                            print "Group is not ready yet - will retry checking for it"
+                            time.sleep(10) # Give it a little chance to get through
+                            numTimesToTryGet = numTimesToTryGet - 1
+                    except Exception as e:
+                        print "Group not ready yet - will retry checking for it"
+                        print e
+                        time.sleep(10) # Give it a little chance to get through
+                        numTimesToTryGet = numTimesToTryGet - 1                    
             else:
                 print("Error creating temporary MG")
                 print ("Sleeping with backoff:" + str(backoff))
