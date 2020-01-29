@@ -7,6 +7,11 @@ import os
 import random
 from msrestazure.azure_cloud import AZURE_PUBLIC_CLOUD # pip install azure
 from msrestazure.azure_active_directory import AdalAuthentication
+from cryptography.x509 import load_pem_x509_certificate
+from cryptography.hazmat.backends import default_backend
+import jwt
+
+
 #from msal import PublicClientApplication # MSAL doesn't support the Powershell ClientId hack, so don't bother
 
 # create a struct to hold the user & the sp's tokens for graph, management, etc. TODO - this should be decomposed out to a class
@@ -480,7 +485,7 @@ if doAADSettingChangeTest:
                 quit(1)
 
 # Test creating a management group and granting the initial user perms to it
-doManagementGroupTest = True
+doManagementGroupTest = False
 if doManagementGroupTest:
 
 
@@ -626,7 +631,7 @@ if doManagementGroupTest:
 
 
 # Test create a user and grant them billing administrator
-doUserCreateTest = True
+doUserCreateTest = False
 if doUserCreateTest:
     print ("Doing a sample user creation")
 
@@ -725,7 +730,7 @@ if doUserCreateTest:
 
 
     
-doAdminPasswordResetTest = True
+doAdminPasswordResetTest = False
 if doAdminPasswordResetTest:
     print ("Now let's reset the admin user's password to something new & force a retry")
     try:
@@ -747,5 +752,57 @@ if doAdminPasswordResetTest:
     except Exception as e:
         print ("Error reseting the admin's password")
         print (e)        
+
+
+
+
+# Do generate a bearer token to be provided to an external app via hacky mechanism
+doTokenGenerate = True
+if doTokenGenerate:
+
+    calc_client_id      = os.environ.get("calc_client_id")
+    calc_client_secret  = os.environ.get("calc_client_secret")
+    calc_resource = managementURI  # Note - we should be getting a different resource 
+
+    authContextSP = adal.AuthenticationContext(authority=authority)
+    authResultSP = authContextSP.acquire_token_with_client_credentials(calc_resource,calc_client_id,calc_client_secret)
+    tokenSP = authResultSP["accessToken"]
+
+    gotSPAuth = True
+    print ("Got the token for the SP {0} for Uri {1}: {2}!".format(calc_client_id,calc_resource,tokenSP))
+
+    # Now, prove we can verify it  --- https://aboutsimon.com/blog/2017/12/05/Azure-ActiveDirectory-JWT-Token-Validation-With-Python.html, but use the resource instead of the appID as the audience
+    try:
+
+        token_header = jwt.get_unverified_header(tokenSP)
+        res = requests.get('https://login.microsoftonline.com/common/.well-known/openid-configuration')
+        jwk_uri = res.json()['jwks_uri']    
+        res = requests.get(jwk_uri)
+        jwk_keys = res.json()
+
+        x5c = None
+
+        # Iterate JWK keys and extract matching x5c chain
+        for key in jwk_keys['keys']:
+            if key['kid'] == token_header['kid']:
+                x5c = key['x5c']
+        cert = ''.join([
+            '-----BEGIN CERTIFICATE-----\n',
+            x5c[0],
+            '\n-----END CERTIFICATE-----\n',
+        ])
+        public_key =  load_pem_x509_certificate(cert.encode(), default_backend()).public_key()
+
+        jwt.decode(
+            tokenSP,
+            public_key,
+            algorithms='RS256',
+            audience=calc_resource,
+        )
+        print ("success!")
+    except Exception as e:
+        print ("Error validating token")
+        print(e)
+
 
 print("All Done!")
