@@ -757,7 +757,7 @@ if doAdminPasswordResetTest:
 
 
 # Do generate a bearer token to be provided to an external app via hacky mechanism
-doTokenGenerate = True
+doTokenGenerate = False
 if doTokenGenerate:
 
     calc_client_id      = os.environ.get("calc_client_id")
@@ -797,12 +797,39 @@ if doTokenGenerate:
             tokenSP,
             public_key,
             algorithms='RS256',
-            audience=calc_resource,
+            audience=calc_resource,   #Note - the audience is the resource, not the AppID!
         )
         print ("success!")
     except Exception as e:
         print ("Error validating token")
         print(e)
+
+# Now do some billing tests to simulate https://gist.github.com/graham-dds/d60e910dca39df6ce970af7929985ea9 but without the (failing) sdk
+doCostTest = True
+if doCostTest:
+    cost_client_id      = os.environ.get("COST_CLIENT_ID")
+    cost_client_secret  = os.environ.get("COST_CLIENT_SECRET")
+    cost_tenant         = os.environ.get("COST_TENANT")
+    cost_sub            = os.environ.get("COST_SUBSCRIPTION_ID")
+
+    cost_resource = managementURI  
+    authorityCost = f"{authorityBase}/{cost_tenant}"
+    authContextCost = adal.AuthenticationContext(authority=authorityCost)
+    authResultCost = authContextCost.acquire_token_with_client_credentials(cost_resource,cost_client_id,cost_client_secret)
+    tokenCost = authResultCost["accessToken"]
+
+    headersCost = {
+                "Authorization": "Bearer {}".format(tokenCost),
+                "Content-Type":"application/json"
+                }
+
+    cost_resource = managementURI  # Note - we should be getting a different resource 
+    scope = f"/subscriptions/{cost_sub}/"
+
+    costListDimensionsURL = f"{managementURI}/{scope}/providers/Microsoft.CostManagement/dimensions?api-version=2019-11-01"
+
+    costListDimensionsResponse = requests.get(costListDimensionsURL, headers=headersCost)
+    print (costListDimensionsResponse.content)
 
 
 print("All Done!")
