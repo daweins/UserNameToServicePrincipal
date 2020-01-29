@@ -825,7 +825,7 @@ if doCostTest:
 
     cost_resource = managementURI  # Note - we should be getting a different resource 
     scope = f"/subscriptions/{cost_sub}/"
-
+    #scope = f'/providers/Microsoft.Management/managementGroups/{cost_tenant}'  #Go against the root management group, which shares its name with the tenant, conveniently
     costListDimensionsURL = f"{managementURI}/{scope}/providers/Microsoft.CostManagement/dimensions?api-version=2019-11-01"
 
     costListDimensionsResponse = requests.get(costListDimensionsURL, headers=headersCost)
