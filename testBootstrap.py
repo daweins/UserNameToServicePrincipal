@@ -30,7 +30,7 @@ graphURI        = "https://graph.microsoft.com/" # Don't see any endpoint in the
 
 
 uriToAuthAgainstList = [managementURI, graphURI]
-scopeList = ["user.read"]
+
 
 
 
@@ -40,13 +40,13 @@ appName = str(uuid.uuid4())
 print("Starting. Note - we expect transient errors & retries - we are not waiting arbitrary times for AAD propagation")
 
 #Tenant Information
-TENANTID      = os.environ.get("TENANTID") # ex: daweinsatat.onmicrosoft.com - note, because we append this to the userName, don't use the Tenant Id
+tenantId      = os.environ.get("TENANTID") # ex: daweinsatat.onmicrosoft.com - note, because we append this to the userName, don't use the Tenant Id
 userName      = os.environ.get("USERNAME")   # ex: bootstrapadmin if the email address was bootstrapadmin@daweinsatat.onmicrosoft.com
 userPassword  = os.environ.get("USERPWD")    # ex: ImN0tPuttingAnExampleForThis! 
 tenantName    = os.environ.get("TENANTNAME") # ex: bob.onmicrosoft.com
 
 # Fail immediately if these aren't populated
-if (TENANTID is None or userName is None or userPassword is None):
+if (tenantId is None or userName is None or userPassword is None):
     print("Missing environment variables containing TENANTID, USERNAME, or USERPWD. Quitting with code 1 (error)")
     quit(1)
 else:   
@@ -63,7 +63,7 @@ else:
     #clientId    = "1b730954-1685-4b74-9bfd-dac224a7b894"      # Hardcoded Client Id for ADAL of unknown provenance - TODO - see if there is a better way to do this, but it"s a good cheat to get on the first rung of the ladder for now
     clientId    = "1950a258-227b-4e31-a9cf-717495945fc2"       # PowerShell Client Id for ADAL - TODO - see if there is a better way to do this, but it"s a good cheat to get on the first rung of the ladder for now
    
-    authority   = authorityBase + "/" + TENANTID
+    authority   = authorityBase + "/" + tenantId
     app_url     = graphURI + "v1.0/applications"
     sp_url      = graphURI + "beta/servicePrincipals"
     me_url      = graphURI + "v1.0/me/"
@@ -107,6 +107,7 @@ else:
     if meResponse.ok:
         meResponseJSON = json.loads(meResponse.content)
         privUserPrincipalId = meResponseJSON["id"]
+        privUserUPN= meResponseJSON["userPrincipalName"]
     else:
         "Failed to get the priv user's Id"
 
@@ -532,7 +533,7 @@ if doManagementGroupTest:
             "type": "/providers/Microsoft.Management/managementGroups",
             "name": tempGroupName,
             "properties": {
-                "TENANTID": TENANTID,
+                "TENANTID": tenantId,
                 "displayName": tempGroupName,
                 "details": {
                 "parent": {
@@ -589,7 +590,7 @@ if doManagementGroupTest:
     ownerRoleId = '8e3af657-a8ff-443c-a75c-2fe8c4bcb635' #This is stable & published, but we could/should get it dynamically as well
     for curPrincipalId in userPrincipalIdList:
         try:
-            rootMGId = TENANTID #The tenant root automatically gets named w/ the tenant ID, which is convenient
+            rootMGId = tenantId #The tenant root automatically gets named w/ the tenant ID, which is convenient
             print ("Assigning Owner privs to management group {0} for principal {1}".format(rootMGId, curPrincipalId))
             roleDefId = "/providers/Microsoft.Management/managementGroups/{0}/providers/Microsoft.Authorization/roleDefinitions/{1}".format(rootMGId,ownerRoleId) 
             assignmentGUID = str(uuid.uuid4())
@@ -726,6 +727,25 @@ if doUserCreateTest:
     
 doAdminPasswordResetTest = True
 if doAdminPasswordResetTest:
-    pass
+    print ("Now let's reset the admin user's password to something new & force a retry")
+    try:
+        newPassword = str(uuid.uuid4())
+        resetPasswordContent = {
+            "passwordProfile": {
+                "password": newPassword,
+                "forceChangePasswordNextSignIn": True,
+                "forceChangePasswordNextSignInWithMfa" : False
+            }
+        }
+        adminPasswordResetURL = f"{graphURI}v1.0/users/{privUserPrincipalId}"
+
+        adminPasswordResetResponse = requests.patch(adminPasswordResetURL,headers=credList[privUser][graphURI], data=json.dumps(resetPasswordContent))
+        if adminPasswordResetResponse.ok:
+            print (f"Reset the admin password successfully to : {newPassword}. It must be changed on next login.")
+        else:
+            print ("Failed to reset the admin's password")
+    except Exception as e:
+        print ("Error reseting the admin's password")
+        print (e)        
 
 print("All Done!")
