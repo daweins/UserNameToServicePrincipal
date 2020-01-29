@@ -34,7 +34,7 @@ scopeList = ["user.read"]
 
 
 
-# TODO - decIde if this should be hardcoded, or left as a random GUId
+# TODO - decide if this should be hardcoded, or left as a random GUId
 appName = str(uuid.uuid4())
 
 print("Starting. Note - we expect transient errors & retries - we are not waiting arbitrary times for AAD propagation")
@@ -43,6 +43,7 @@ print("Starting. Note - we expect transient errors & retries - we are not waitin
 TENANTID      = os.environ.get("TENANTID") # ex: daweinsatat.onmicrosoft.com - note, because we append this to the userName, don't use the Tenant Id
 userName      = os.environ.get("USERNAME")   # ex: bootstrapadmin if the email address was bootstrapadmin@daweinsatat.onmicrosoft.com
 userPassword  = os.environ.get("USERPWD")    # ex: ImN0tPuttingAnExampleForThis! 
+tenantName    = os.environ.get("TENANTNAME") # ex: bob.onmicrosoft.com
 
 # Fail immediately if these aren't populated
 if (TENANTID is None or userName is None or userPassword is None):
@@ -91,8 +92,8 @@ else:
                         }
                     credList[privUser][curAuthUri] = headers
             except Exception as e:
-                print ("DIdn't get an auth token for user {0} credentials for {1} Retrying with backoff".format(userName, curAuthUri))
-                print e
+                print ("Didn't get an auth token for user {0} credentials for {1} Retrying with backoff".format(userName, curAuthUri))
+                print (e)
                 print ("Sleeping with backoff:" + str(backoff))
                 time.sleep(backoff)
                 backoff *= backoffRate
@@ -124,7 +125,7 @@ else:
             appResponseJSON = json.loads(appResponse.content)
             if "appId" not in appResponseJSON:
                 print ("Failed to create the application registration. Retrying with backoff")
-                print appResponse.content
+                print (appResponse.content)
                 print ("Sleeping with backoff:" + str(backoff))
                 time.sleep(backoff)
                 backoff *= backoffRate
@@ -139,7 +140,7 @@ else:
                 gotAPPReg = True
         except Exception as e:
                 print("Error creating application registration. Retrying with backoff")
-                print e
+                print (e)
                 print ("Sleeping with backoff:" + str(backoff))
                 time.sleep(backoff)
                 backoff *= backoffRate
@@ -169,7 +170,7 @@ else:
             print ("Newly created spId: " + spId)
         except Exception as e:
                 print("Error creating the service principal. Retrying with backoff")
-                print e 
+                print (e) 
                 print ("Sleeping with backoff:" + str(backoff))
                 time.sleep(backoff)
                 backoff *= backoffRate
@@ -201,7 +202,7 @@ else:
             print ("Created the app password")
         except Exception as e:
                 print("Error creating the password for the service principal. Retrying with backoff")
-                print e 
+                print (e)
                 print ("Sleeping with backoff:" + str(backoff))
                 time.sleep(backoff)
                 backoff *= backoffRate
@@ -246,9 +247,9 @@ else:
         role_url    = graphURI + "/beta/roleManagement/directory/roleAssignments" 
         try:            
             roleCreateResponse = requests.post(role_url, headers=credList[privUser][graphURI], data=json.dumps(roleAddContent))
-            print roleCreateResponse.content
+            print (roleCreateResponse.content)
             if not roleCreateResponse.ok:
-                print "Failed to assign role. Retrying with backoff"    
+                print ("Failed to assign role. Retrying with backoff")    
                 print ("Sleeping with backoff:" + str(backoff))
                 time.sleep(backoff)
                 backoff *= backoffRate
@@ -259,7 +260,7 @@ else:
             else:
                 # No more sleeping - retry logic build in
                 print ("Successfully added role! ")
-                print roleCreateResponse.content
+                print (roleCreateResponse.content)
                 gotAssignedRole = True
                 # TODO - probably shouldn't be printing out these creds, but this is a PoC
 
@@ -269,7 +270,7 @@ else:
                 print("Password: " + appPwd)
         except Exception as e:
                 print ("Error assigning the role - retrying with backoff")
-                print e
+                print (e)
                 print ("Sleeping with backoff:" + str(backoff))
                 time.sleep(backoff)
                 backoff *= backoffRate
@@ -297,7 +298,7 @@ for curAuthUri in uriToAuthAgainstList:
             else:
                 tokenSP = authResultSP["accessToken"]
                 gotSPAuth = True
-                print "Got the token for the SP {0} for Uri {1}: {2}!".format(appId,curAuthUri,tokenSP)
+                print ("Got the token for the SP {0} for Uri {1}: {2}!".format(appId,curAuthUri,tokenSP))
                 headersSP = {
                     "Authorization": "Bearer {}".format(tokenSP),
                     "Content-Type":"application/json"
@@ -305,8 +306,8 @@ for curAuthUri in uriToAuthAgainstList:
                 credList[privSP][curAuthUri] = headersSP
             gotSPAuth = True
         except Exception as e:
-            print "Failure logging in with the new principal {0} for {1}. Don't be surprised if this takes 15-60 seconds.  Backing off".format(appId,curAuthUri)
-            print e
+            print ("Failure logging in with the new principal {0} for {1}. Don't be surprised if this takes 15-60 seconds.  Backing off".format(appId,curAuthUri))
+            print (e)
             
             print ("Sleeping with backoff:" + str(backoff))
             time.sleep(backoff)
@@ -454,10 +455,10 @@ if doAADSettingChangeTest:
             curSettingResponse = requests.get(listSettingsURL, headers=credList[privSP][graphURI] )
             print(curSettingResponse.content)
             if curSettingResponse.ok:
-                print "got new setting - manually eyeball that it exists"
+                print ("got new setting - manually eyeball that it exists")
                 gotNewRules = True
             else:
-                print "Error getting settings - backing off"
+                print ("Error getting settings - backing off")
                 
                 print ("Sleeping with backoff:" + str(backoff))
                 time.sleep(backoff)
@@ -495,12 +496,11 @@ if doManagementGroupTest:
         try:
             elevateURL = managementURI +  'providers/Microsoft.Authorization/elevateAccess?api-version=2016-07-01'
             elevateResponse = requests.post(elevateURL, headers=credList[privUser][managementURI])
-            print("Elevation Result: " + elevateResponse.content)
             if elevateResponse.ok:
-                print "Successful elevation!"
+                print ("Successful elevation!")
                 doneElevatingUserToMG = True
             else:
-                print "Unsuccessful - trying again"
+                print ("Unsuccessful - trying again")
                 print ("Sleeping with backoff:" + str(backoff))
                 time.sleep(backoff)
                 backoff *= backoffRate
@@ -509,8 +509,8 @@ if doManagementGroupTest:
                     print("Backed off too much - quitting with error (1)") 
                     quit(1)
         except Exception as e:
-            print "Exception during elevation"
-            print e
+            print ("Exception during elevation")
+            print (e)
             print ("Sleeping with backoff:" + str(backoff))
             time.sleep(backoff)
             backoff *= backoffRate
@@ -541,9 +541,9 @@ if doManagementGroupTest:
                 }
             }
             }
-            print "Creating temporary management group in order to provoke creation of the root MG"
+            print ("Creating temporary management group in order to provoke creation of the root MG")
             createRootMGResponse = requests.put(createRootURL, headers=credList[privUser][managementURI], data=json.dumps(createRootMG))
-            print str(createRootMGResponse.content)
+            print (str(createRootMGResponse.content))
             numTimesToTryGet = 10
             if createRootMGResponse.ok:
                 while numTimesToTryGet > 0 and not doneCreateRootMG:
@@ -553,15 +553,15 @@ if doManagementGroupTest:
                         getMGResponse = requests.get(getMGURL, headers=credList[privUser][managementURI])
                         getMGJSON = json.loads(getMGResponse.content)
                         if "id" in getMGJSON:
-                            print "The management group is ready - it's id is {0}".format(getMGJSON["id"])
+                            print ("The management group is ready - it's id is {0}".format(getMGJSON["id"]))
                             doneCreateRootMG = True
                         else:
-                            print "Group is not ready yet - will retry checking for it"
+                            print ("Group is not ready yet - will retry checking for it")
                             time.sleep(10) # Give it a little chance to get through
                             numTimesToTryGet = numTimesToTryGet - 1
                     except Exception as e:
-                        print "Group not ready yet - will retry checking for it"
-                        print e
+                        print ("Group not ready yet - will retry checking for it")
+                        print (e)
                         time.sleep(10) # Give it a little chance to get through
                         numTimesToTryGet = numTimesToTryGet - 1                    
             else:
@@ -575,7 +575,7 @@ if doManagementGroupTest:
                     quit(1)
         except Exception as e:
             print("Exception creating temp MG")
-            print e
+            print (e)
             print ("Sleeping with backoff:" + str(backoff))
             time.sleep(backoff)
             backoff *= backoffRate
@@ -590,7 +590,7 @@ if doManagementGroupTest:
     for curPrincipalId in userPrincipalIdList:
         try:
             rootMGId = TENANTID #The tenant root automatically gets named w/ the tenant ID, which is convenient
-            print "Assigning Owner privs to management group {0} for principal {1}".format(rootMGId, curPrincipalId)
+            print ("Assigning Owner privs to management group {0} for principal {1}".format(rootMGId, curPrincipalId))
             roleDefId = "/providers/Microsoft.Management/managementGroups/{0}/providers/Microsoft.Authorization/roleDefinitions/{1}".format(rootMGId,ownerRoleId) 
             assignmentGUID = str(uuid.uuid4())
             assignURL = "{0}/providers/Microsoft.Management/managementGroups/{1}/providers/Microsoft.Authorization/roleAssignments/{2}?api-version=2015-07-01".format(managementURI,rootMGId,assignmentGUID)
@@ -602,24 +602,130 @@ if doManagementGroupTest:
                 }
             assignPermResponse = requests.put(assignURL, headers=credList[privUser][managementURI],data=json.dumps(assignPermsContent))
             if assignPermResponse.ok:
-                print "Assigned permissions successfully!"
-            print assignPermResponse.content
+                print ("Assigned permissions successfully!")
+            print (assignPermResponse.content)
 
         except Exception as e:
-            print "Error assigning permssion"
-            print e
+            print ("Error assigning permssion")
+            print (e)
 
     # Delete the created temp MG
     deleteMGRUL = "{0}/providers/Microsoft.Management/managementGroups/{1}?api-version=2018-03-01-preview".format(managementURI, tempGroupName )
     try:
-        print "Deleting the temporary Management Group"
+        print ("Deleting the temporary Management Group")
         deleteMTResponse = requests.delete(deleteMGRUL, headers=credList[privUser][managementURI])
-        print deleteMTResponse.content
+        print (deleteMTResponse.content)
         if deleteMTResponse.ok:
-            print "Successfully deleted the temporary management group"
+            print ("Successfully deleted the temporary management group")
         else:
-            print "Failed to delete the temp management group"
+            print ("Failed to delete the temp management group")
     except Exception as e:
-        print "Error deleting temp management group"
-        print e
+        print ("Error deleting temp management group")
+        print (e)
+
+
+# Test create a user and grant them billing administrator
+doUserCreateTest = True
+if doUserCreateTest:
+    print ("Doing a sample user creation")
+
+    uniquer = str(uuid.uuid4())
+    userName = 'bob' + uniquer
+    mailNickname = userName
+    userPrincipalName = f"{userName}@{tenantName}"
+    tempPwd = str(uuid.uuid4())
+    createUserContent = {
+            "accountEnabled": True,
+            "displayName": userName,
+            "mailNickname": mailNickname,
+            "userPrincipalName": userPrincipalName,
+            "passwordProfile" : {
+                "forceChangePasswordNextSignIn": True,
+                "password":  tempPwd
+            }
+        }
+
+    createUserURL = f"{graphURI}v1.0/users"
+    try:
+        createUserResponse = requests.post(createUserURL, headers=credList[privUser][graphURI], data=json.dumps(createUserContent))
+        print (createUserResponse.content)
+        if createUserResponse.ok:
+            createUserJSON = json.loads(createUserResponse.content)
+            newUserId = createUserJSON["id"]
+            
+            print (f"Success creating user with id:{newUserId}")
+        else:
+            print ("Failure creating user")
+    except Exception as e:
+        print ("Error creating user")
+        print (e)
+
+
+
+    # Now do the new user's perms
+    billingAdminRoleId = "794bb258-3e31-42ff-9ee4-731a72f62851" # no hardcoding
+    try:
+        roleListURL = graphURI + "/beta/roleManagement/directory/roleDefinitions"
+        roleListResponse = requests.get(roleListURL,headers=credList[privUser][graphURI])
+        roleListJSON = json.loads(roleListResponse.content)
+        foundRole = False
+        for curRole in roleListJSON["value"]:
+            if curRole["displayName"] == "Billing Administrator":
+                print("Found Billing Admin role: " + curRole["id"])
+                billingAdminRoleId = curRole["id"]
+                foundRole = True
+                break
+        if not foundRole:
+                print("Couldn't find the Billing Admin Role - continuing with the hardcoded value of " + roleId)
+    except  Exception as e:
+        print("Error getting the Billing Admin role - continuing with the hardcoded value of "+ roleId)
+        print(e)
+
+
+
+    # Assign the role to the SP
+    gotAssignedRole = False
+    while not gotAssignedRole:
+        roleAddContent = {
+            "principalId": newUserId,
+            "roleDefinitionId" : billingAdminRoleId,
+            "resourceScope":"/"
+        }
+
+        role_url    = graphURI + "/beta/roleManagement/directory/roleAssignments" 
+        try:            
+            roleCreateResponse = requests.post(role_url, headers=credList[privUser][graphURI], data=json.dumps(roleAddContent))
+            print (roleCreateResponse.content)
+            if not roleCreateResponse.ok:
+                print ("Failed to assign role. Retrying with backoff")    
+                print ("Sleeping with backoff:" + str(backoff))
+                time.sleep(backoff)
+                backoff *= backoffRate
+                if backoff > maxBackoff:
+                    # TODO - normally this should set off alarms & logs & a longer sleep
+                    print("Backed off too much - quitting with error (1)") 
+                    quit(1)
+            else:
+                # No more sleeping - retry logic build in
+                print ("Successfully added role! ")
+                print (roleCreateResponse.content)
+                gotAssignedRole = True
+              
+        except Exception as e:
+                print ("Error assigning the role - retrying with backoff")
+                print (e)
+                print ("Sleeping with backoff:" + str(backoff))
+                time.sleep(backoff)
+                backoff *= backoffRate
+                if backoff > maxBackoff:
+                    # TODO - normally this should set off alarms & logs & a longer sleep
+                    print("Backed off too much - quitting with error (1)") 
+                    quit(1)
+
+
+    
+doAdminPasswordResetTest = True
+if doAdminPasswordResetTest:
+    pass
+
 print("All Done!")
