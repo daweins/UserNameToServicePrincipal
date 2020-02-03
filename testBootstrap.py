@@ -757,12 +757,12 @@ if doAdminPasswordResetTest:
 
 
 # Do generate a bearer token to be provided to an external app via hacky mechanism
-doTokenGenerate = False
+doTokenGenerate = True
 if doTokenGenerate:
 
     calc_client_id      = os.environ.get("calc_client_id")
     calc_client_secret  = os.environ.get("calc_client_secret")
-    calc_resource = managementURI  # Note - we should be getting a different resource 
+    calc_resource = "http://azurecom.onmicrosoft.com/acom-prod"  # Supplied by Marek Karbarz (MSFT)
 
     authContextSP = adal.AuthenticationContext(authority=authority)
     authResultSP = authContextSP.acquire_token_with_client_credentials(calc_resource,calc_client_id,calc_client_secret)
