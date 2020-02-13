@@ -9,6 +9,9 @@ from msrestazure.azure_cloud import AZURE_PUBLIC_CLOUD # pip install azure
 from msrestazure.azure_active_directory import AdalAuthentication
 from cryptography.x509 import load_pem_x509_certificate
 from cryptography.hazmat.backends import default_backend
+#from msal import ConfidentialClientApplication
+
+
 import jwt
 
 
@@ -65,8 +68,8 @@ else:
 
 
     # Create some useful strings for later
-    #clientId    = "1b730954-1685-4b74-9bfd-dac224a7b894"      # Hardcoded Client Id for ADAL of unknown provenance - TODO - see if there is a better way to do this, but it"s a good cheat to get on the first rung of the ladder for now
-    clientId    = "1950a258-227b-4e31-a9cf-717495945fc2"       # PowerShell Client Id for ADAL - TODO - see if there is a better way to do this, but it"s a good cheat to get on the first rung of the ladder for now
+    clientId    = "1b730954-1685-4b74-9bfd-dac224a7b894"       # Hardcoded Client Id for ADAL against RDFE - TODO - see if there is a better way to do this, but it"s a good cheat to get on the first rung of the ladder for now
+    #clientId    = "1950a258-227b-4e31-a9cf-717495945fc2"       # PowerShell Client Id for ADAL - TODO - see if there is a better way to do this, but it"s a good cheat to get on the first rung of the ladder for now
    
     authority   = authorityBase + "/" + tenantId
     app_url     = graphURI + "v1.0/applications"
@@ -122,9 +125,20 @@ else:
     while not gotAPPReg:
         try:
             
-
+            # Adding magic role to resource Access - this is for Policy.Read.All (found by adding to an existing app reg in the portal, then viewing properties in Graph Explorer)
             appCreateContent = {
-                "displayName" : appName
+                "displayName" : appName,
+                "requiredResourceAccess": [
+                {
+                    "resourceAppId": "00000003-0000-0000-c000-000000000000",
+                    "resourceAccess": [
+                        {
+                            "id": "246dd0d5-5bd0-4def-940b-0421030a5b68",
+                            "type": "Role"
+                        }
+                    ]
+                }
+            ]
             }
 
             appResponse = requests.post(app_url, headers=credList[privUser][graphURI],data=json.dumps(appCreateContent))
@@ -222,6 +236,7 @@ else:
     # TODO - Loop this to iterate over an array of roles to assign 
     # Get the Company (Global) Admin role Id rather than relying on hardcoding
     # This doesn't need retry logic - use the hardcoded if it fails
+
     roleId = "794bb258-3e31-42ff-9ee4-731a72f62851" # no hardcoding
     try:
         roleListURL = graphURI + "/beta/roleManagement/directory/roleDefinitions"
@@ -240,50 +255,52 @@ else:
         print(e)
 
 
+    #: Adding 246dd0d5-5bd0-4def-940b-0421030a5b68 to the role list, which corresponds to Policy.Read.All 
+    roleArray = [roleId]
+    for curRoleId in roleArray:
+        # Assign the role to the SP
+        gotAssignedRole = False
+        while not gotAssignedRole:
+            roleAddContent = {
+                "principalId": spId,
+                "roleDefinitionId" : curRoleId,
+                "resourceScope":"/"
+            }
 
-    # Assign the role to the SP
-    gotAssignedRole = False
-    while not gotAssignedRole:
-        roleAddContent = {
-            "principalId": spId,
-            "roleDefinitionId" : roleId,
-            "resourceScope":"/"
-        }
-
-        role_url    = graphURI + "/beta/roleManagement/directory/roleAssignments" 
-        try:            
-            roleCreateResponse = requests.post(role_url, headers=credList[privUser][graphURI], data=json.dumps(roleAddContent))
-            print (roleCreateResponse.content)
-            if not roleCreateResponse.ok:
-                print ("Failed to assign role. Retrying with backoff")    
-                print ("Sleeping with backoff:" + str(backoff))
-                time.sleep(backoff)
-                backoff *= backoffRate
-                if backoff > maxBackoff:
-                    # TODO - normally this should set off alarms & logs & a longer sleep
-                    print("Backed off too much - quitting with error (1)") 
-                    quit(1)
-            else:
-                # No more sleeping - retry logic build in
-                print ("Successfully added role! ")
+            role_url    = graphURI + "/beta/roleManagement/directory/roleAssignments" 
+            try:            
+                roleCreateResponse = requests.post(role_url, headers=credList[privUser][graphURI], data=json.dumps(roleAddContent))
                 print (roleCreateResponse.content)
-                gotAssignedRole = True
-                # TODO - probably shouldn't be printing out these creds, but this is a PoC
+                if not roleCreateResponse.ok:
+                    print ("Failed to assign role. Retrying with backoff")    
+                    print ("Sleeping with backoff:" + str(backoff))
+                    time.sleep(backoff)
+                    backoff *= backoffRate
+                    if backoff > maxBackoff:
+                        # TODO - normally this should set off alarms & logs & a longer sleep
+                        print("Backed off too much - quitting with error (1)") 
+                        quit(1)
+                else:
+                    # No more sleeping - retry logic build in
+                    print ("Successfully added role! ")
+                    print (roleCreateResponse.content)
+                    gotAssignedRole = True
+                    # TODO - probably shouldn't be printing out these creds, but this is a PoC
 
-                # TODO - add a get role for the user as a check before declaring success
-                print("appId:" + appId)
-                print("SPId: " + spId)
-                print("Password: " + appPwd)
-        except Exception as e:
-                print ("Error assigning the role - retrying with backoff")
-                print (e)
-                print ("Sleeping with backoff:" + str(backoff))
-                time.sleep(backoff)
-                backoff *= backoffRate
-                if backoff > maxBackoff:
-                    # TODO - normally this should set off alarms & logs & a longer sleep
-                    print("Backed off too much - quitting with error (1)") 
-                    quit(1)
+                    # TODO - add a get role for the user as a check before declaring success
+                    print("appId:" + appId)
+                    print("SPId: " + spId)
+                    print("Password: " + appPwd)
+            except Exception as e:
+                    print ("Error assigning the role - retrying with backoff")
+                    print (e)
+                    print ("Sleeping with backoff:" + str(backoff))
+                    time.sleep(backoff)
+                    backoff *= backoffRate
+                    if backoff > maxBackoff:
+                        # TODO - normally this should set off alarms & logs & a longer sleep
+                        print("Backed off too much - quitting with error (1)") 
+                        quit(1)
 
 
 # Test to make sure we can log in with this principal
@@ -485,7 +502,7 @@ if doAADSettingChangeTest:
                 quit(1)
 
 # Test creating a management group and granting the initial user perms to it
-doManagementGroupTest = False
+doManagementGroupTest = True
 if doManagementGroupTest:
 
 
@@ -757,7 +774,7 @@ if doAdminPasswordResetTest:
 
 
 # Do generate a bearer token to be provided to an external app via hacky mechanism
-doTokenGenerate = True
+doTokenGenerate = False
 if doTokenGenerate:
 
     calc_client_id      = os.environ.get("calc_client_id")
@@ -805,7 +822,7 @@ if doTokenGenerate:
         print(e)
 
 # Now do some billing tests to simulate https://gist.github.com/graham-dds/d60e910dca39df6ce970af7929985ea9 but without the (failing) sdk
-doCostTest = True
+doCostTest = False
 if doCostTest:
     cost_client_id      = os.environ.get("COST_CLIENT_ID")
     cost_client_secret  = os.environ.get("COST_CLIENT_SECRET")
@@ -832,5 +849,16 @@ if doCostTest:
     costListDimensionsResponse = requests.get(costListDimensionsURL, headers=headersCost)
     print (costListDimensionsResponse.content)
 
+
+doConditionalAccessPolicyTest = True
+if doConditionalAccessPolicyTest:
+    print ("CAP test")
+    capURL = graphURI + "/beta/conditionalAccess/policies"
+    #app = ConfidentialClientApplication(appId,appPwd)
+    #capScopes = ["https://graph.microsoft.com/.default"]
+    #capToken = app.acquire_token_with_client_credentials(capScopes)
+
+    capResponse = requests.get(capURL,headers=credList[privUser][graphURI])
+    capJSON = json.loads(capResponse.content)
 
 print("All Done!")
