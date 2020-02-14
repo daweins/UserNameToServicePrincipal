@@ -9,8 +9,8 @@ from msrestazure.azure_cloud import AZURE_PUBLIC_CLOUD # pip install azure
 from msrestazure.azure_active_directory import AdalAuthentication
 from cryptography.x509 import load_pem_x509_certificate
 from cryptography.hazmat.backends import default_backend
-#from msal import ConfidentialClientApplication
-
+from msal import ConfidentialClientApplication
+from msal import PublicClientApplication
 
 import jwt
 
@@ -68,8 +68,8 @@ else:
 
 
     # Create some useful strings for later
-    clientId    = "1b730954-1685-4b74-9bfd-dac224a7b894"       # Hardcoded Client Id for ADAL against RDFE - TODO - see if there is a better way to do this, but it"s a good cheat to get on the first rung of the ladder for now
-    #clientId    = "1950a258-227b-4e31-a9cf-717495945fc2"       # PowerShell Client Id for ADAL - TODO - see if there is a better way to do this, but it"s a good cheat to get on the first rung of the ladder for now
+    #clientId    = "1b730954-1685-4b74-9bfd-dac224a7b894"       # Hardcoded Client Id for ADAL against RDFE - TODO - see if there is a better way to do this, but it"s a good cheat to get on the first rung of the ladder for now
+    clientId    = "1950a258-227b-4e31-a9cf-717495945fc2"       # PowerShell Client Id for ADAL - TODO - see if there is a better way to do this, but it"s a good cheat to get on the first rung of the ladder for now
    
     authority   = authorityBase + "/" + tenantId
     app_url     = graphURI + "v1.0/applications"
@@ -86,7 +86,7 @@ else:
                 authContext = adal.AuthenticationContext(authority) 
                 authResult = authContext.acquire_token_with_username_password(curAuthUri, userName, userPassword, clientId)  # Need to use ADAL - hardcoded Powershell ClientId trick doesn't work for MSAL
                 if "accessToken" not in authResult:
-                    print ("DIdn't get an auth token for user {0} credentials for {1} Retrying with backoff".format(userName, curAuthUri))
+                    print ("Didn't get an auth token for user {0} credentials for {1} Retrying with backoff".format(userName, curAuthUri))
                     time.sleep(backoff)
                     backoff *= backoffRate
                     # TODO - probably add some more logging, like the error result returned
@@ -502,7 +502,7 @@ if doAADSettingChangeTest:
                 quit(1)
 
 # Test creating a management group and granting the initial user perms to it
-doManagementGroupTest = True
+doManagementGroupTest = False
 if doManagementGroupTest:
 
 
@@ -853,12 +853,75 @@ if doCostTest:
 doConditionalAccessPolicyTest = True
 if doConditionalAccessPolicyTest:
     print ("CAP test")
-    capURL = graphURI + "/beta/conditionalAccess/policies"
-    #app = ConfidentialClientApplication(appId,appPwd)
-    #capScopes = ["https://graph.microsoft.com/.default"]
-    #capToken = app.acquire_token_with_client_credentials(capScopes)
 
-    capResponse = requests.get(capURL,headers=credList[privUser][graphURI])
+    # Create a subscription
+
+    curClientId = appId
+    curClientId = "0a8b87a1-6811-48b2-8647-97de65bd0dc5"
+    
+    print (f"This will use clientID: {curClientId}.")
+  
+    capURL = graphURI + "beta/conditionalAccess/policies"
+    app = PublicClientApplication(curClientId)
+    capScopes = ["https://graph.microsoft.com/.default"]
+    capToken = app.acquire_token_by_username_password(userName,userPassword, capScopes)
+    capHeader = {
+            "Authorization": "Bearer {}".format(capToken),
+            "Content-Type":"application/json"
+            }
+    capResponse = requests.get(capURL,headers=capHeader)
     capJSON = json.loads(capResponse.content)
+    print(f"Response of Graph 2.0 API query against {capURL} using ClientID {curClientId} : {capResponse.content}")
+
+doConditionalAccessPolicyTestWithAdminConsentedSP = True
+if doConditionalAccessPolicyTestWithAdminConsentedSP:
+    
+    curClientId = appId
+    print (f"This will use clientID: {curClientId}. Please grant it admin consent to use Policy.Read.All from the Portal")
+    input("Press enter when ready....")
+  
+    print("Trying against a low priv endpoint like /me: ")
+
+    capURL = graphURI + "v1.0/me/"
+    app = ConfidentialClientApplication(curClientId,appPwd, authority=authority)
+    capScopes = ["https://graph.microsoft.com/.default"]
+    capToken = app.acquire_token_for_client(capScopes)["access_token"]
+    capHeader = {
+            "Authorization": "Bearer {}".format(capToken),
+            "Content-Type":"application/json"
+            }
+    capResponse = requests.get(capURL,headers=capHeader)
+    capJSON = json.loads(capResponse.content)
+    print(f"Response of Graph 2.0 API query against {capURL} using ClientID {curClientId} : {capResponse.content}")
+
+    print("Now trying same creds against the policy endpoint")
+    capURL = graphURI + "beta/conditionalAccess/policies"
+    capResponse = requests.get(capURL,headers=capHeader)
+    capJSON = json.loads(capResponse.content)
+    print(f"Response of Graph 2.0 API query against {capURL} using ClientID {curClientId} : {capResponse.content}")
+
+
+    print("Now trying w/ delegated perms")
+
+    capURL = graphURI + "v1.0/me/"
+    app = PublicClientApplication(curClientId)
+    capScopes = ["https://graph.microsoft.com/.default"]
+    capToken = app.acquire_token_by_username_password(userName, userPassword, capScopes)["access_token"]
+    capHeader = {
+            "Authorization": "Bearer {}".format(capToken),
+            "Content-Type":"application/json"
+            }
+    capResponse = requests.get(capURL,headers=capHeader)
+    capJSON = json.loads(capResponse.content)
+    print(f"Response of Graph 2.0 API query against {capURL} using ClientID {curClientId} : {capResponse.content}")
+
+    print("Now trying same creds against the policy endpoint")
+    capURL = graphURI + "beta/conditionalAccess/policies"
+    capResponse = requests.get(capURL,headers=capHeader)
+    capJSON = json.loads(capResponse.content)
+    print(f"Response of Graph 2.0 API query against {capURL} using ClientID {curClientId} : {capResponse.content}")
+
+
+
 
 print("All Done!")

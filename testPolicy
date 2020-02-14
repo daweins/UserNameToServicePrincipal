@@ -1,0 +1,15 @@
+import requests
+import json
+import uuid
+import time
+import os
+import random
+from msrestazure.azure_cloud import AZURE_PUBLIC_CLOUD # pip install azure
+from cryptography.x509 import load_pem_x509_certificate
+from cryptography.hazmat.backends import default_backend
+from msal import ConfidentialClientApplication
+
+tenantId      = os.environ.get("TENANTID") # ex: daweinsatat.onmicrosoft.com - note, because we append this to the userName, don't use the Tenant Id
+userName      = os.environ.get("USERNAME")   # ex: bootstrapadmin if the email address was bootstrapadmin@daweinsatat.onmicrosoft.com
+userPassword  = os.environ.get("USERPWD")    # ex: ImN0tPuttingAnExampleForThis! 
+tenantName    = os.environ.get("TENANTNAME") # ex: bob.onmicrosoft.com

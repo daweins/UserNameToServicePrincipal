@@ -1,0 +1,12 @@
+Connect-MsolService
+$user = Get-MsolUser -UserPrincipalName "anne@daweinsatat7.onmicrosoft.com"
+
+$st = New-Object -TypeName Microsoft.Online.Administration.StrongAuthenticationRequirement 
+$st.RelyingParty = "*" 
+
+# Pick 1 - enable or disable
+$st.State = "Enabled" # Enable
+
+$st = @()  # Disable
+
+Set-MsolUser -UserPrincipalName $user.UserPrincipalName -StrongAuthenticationRequirements $st -Verbose -Debug
