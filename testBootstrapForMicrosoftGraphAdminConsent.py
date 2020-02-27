@@ -11,7 +11,7 @@ from cryptography.x509 import load_pem_x509_certificate
 from cryptography.hazmat.backends import default_backend
 from msal import ConfidentialClientApplication
 from msal import PublicClientApplication
-
+import msal
 import jwt
 
 
@@ -36,7 +36,7 @@ authorityBase   =  curCloud.endpoints.active_directory
 managementURI   = curCloud.endpoints.resource_manager
 graphURI        = "https://graph.microsoft.com/" # Don't see any endpoint in the cloud object - will work w/ PG to remove need for this hardcoding of Graph 2.0 endpoint. See https://docs.microsoft.com/en-us/azure/azure-government/documentation-government-developer-guIde for Gov endpoint
 graphSPName     = 'https://graph.microsoft.com'
-
+graphScopes = ["https://graph.microsoft.com/.default"]
 
 
 uriToAuthAgainstList = [graphURI]
@@ -70,8 +70,8 @@ else:
 
 
     # Create some useful strings for later
-    #clientId    = "1b730954-1685-4b74-9bfd-dac224a7b894"       # Hardcoded Client Id for ADAL against RDFE - TODO - see if there is a better way to do this, but it"s a good cheat to get on the first rung of the ladder for now
-    clientId    = "1950a258-227b-4e31-a9cf-717495945fc2"       # PowerShell Client Id for ADAL - TODO - see if there is a better way to do this, but it"s a good cheat to get on the first rung of the ladder for now
+    clientId    = "1b730954-1685-4b74-9bfd-dac224a7b894"       # Hardcoded Client Id for ADAL against RDFE - TODO - see if there is a better way to do this, but it"s a good cheat to get on the first rung of the ladder for now
+    #clientId    = "1950a258-227b-4e31-a9cf-717495945fc2"       # PowerShell Client Id for ADAL - TODO - see if there is a better way to do this, but it"s a good cheat to get on the first rung of the ladder for now
    
     authority   = authorityBase + "/" + tenantId
     app_url     = graphURI + "v1.0/applications"
@@ -87,8 +87,6 @@ else:
             try:
                 authContext = adal.AuthenticationContext(authority)                 
                 authResult = authContext.acquire_token_with_username_password(curAuthUri, userName, userPassword, clientId)  # Need to use ADAL - hardcoded Powershell ClientId trick doesn't work for MSAL
-
-                authContext
                 if "accessToken" not in authResult:
                     print ("Didn't get an auth token for user {0} credentials for {1} Retrying with backoff".format(userName, curAuthUri))
                     time.sleep(backoff)
