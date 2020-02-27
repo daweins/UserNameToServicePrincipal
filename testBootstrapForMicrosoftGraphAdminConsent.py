@@ -85,8 +85,10 @@ else:
         gotToken = False
         while not gotToken:
             try:
-                authContext = adal.AuthenticationContext(authority) 
+                authContext = adal.AuthenticationContext(authority)                 
                 authResult = authContext.acquire_token_with_username_password(curAuthUri, userName, userPassword, clientId)  # Need to use ADAL - hardcoded Powershell ClientId trick doesn't work for MSAL
+
+                authContext
                 if "accessToken" not in authResult:
                     print ("Didn't get an auth token for user {0} credentials for {1} Retrying with backoff".format(userName, curAuthUri))
                     time.sleep(backoff)
@@ -296,7 +298,7 @@ for curAuthUri in uriToAuthAgainstList:
             authContextSP = adal.AuthenticationContext(authority=authority)
             authResultSP = authContextSP.acquire_token_with_client_credentials(curAuthUri,appId,appPwd)
             if "accessToken" not in authResultSP:
-                    print (f"Didn't get an auth token with the provIded user {0} credentials for {1}. Retrying with backoff".format(appId,curAuthUri))
+                    print (f"Didn't get an auth token with the provided user {0} credentials for {1}. Retrying with backoff".format(appId,curAuthUri))
                     time.sleep(backoff)
                     backoff *= backoffRate
                     # TODO - probably add some more logging, like the error result returned
@@ -326,10 +328,10 @@ doConditionalAccessPolicyTestWithAdminConsentedSP = True
 if doConditionalAccessPolicyTestWithAdminConsentedSP:
     
     curClientId = appId
-    print (f"This will use clientID: {curClientId}.")
+#TODO - un-hardcode the sleep to a error backoff like above
+    print (f"This will use clientID: {curClientId}. Sleeping for 60 seconds for propagation")
     time.sleep(60)
     app = ConfidentialClientApplication(curClientId,appPwd, authority=authority)
- #   app = ConfidentialClientApplication("f938905a-2750-4810-a59b-b68cf19ff44d","j?BAb9wQL5uFEu]N.MVjj_mCTugfPP30", authority=authority)
  
  
     capScopes = ["https://graph.microsoft.com/.default"]

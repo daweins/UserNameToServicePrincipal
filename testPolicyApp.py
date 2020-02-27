@@ -20,7 +20,7 @@ graphURI        = "https://graph.microsoft.com/" # Don't see any endpoint in the
 print(f"Ready: got tenant: {tenantId}")
 
 authority = f"https://login.microsoftonline.com/{tenantId}"
-clientID = 'b408c318-608c-4600-863c-d62003ad6d35'
+clientID = '0cd93960-f119-4810-b13b-a25dffaef555'
 clientSecret = ""
 app = ConfidentialClientApplication(clientID, authority=authority, client_credential=clientSecret)
 
@@ -43,6 +43,7 @@ if "access_token" in result:
     curToken = result["access_token"]
     print(curToken)
     endpoint =  graphURI + "beta/conditionalAccess/policies"
+ #   endpoint =  graphURI + "v1.0/users"
     http_headers = {'Authorization': 'Bearer ' + curToken,
                     'Accept': 'application/json',
                     'Content-Type': 'application/json'}
